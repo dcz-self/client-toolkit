@@ -20,12 +20,14 @@ use crate::{
 };
 
 pub mod input_method;
+pub mod input_method_v3;
 #[cfg(feature = "xkbcommon")]
 pub mod keyboard;
 pub mod pointer;
 pub mod pointer_constraints;
 pub mod relative_pointer;
 pub mod touch;
+pub mod unstable;
 
 use pointer::cursor_shape::CursorShapeManager;
 use pointer::{PointerData, PointerDataExt, PointerHandler, ThemeSpec, ThemedPointer, Themes};
