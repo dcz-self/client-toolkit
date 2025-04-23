@@ -11,6 +11,7 @@ use wayland_client::WEnum;
 
 use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
+use wayland_protocols::xdg::shell::client::xdg_popup::XdgPopup;
 use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::{
     ChangeCause, ContentHint, ContentPurpose,
 };
@@ -110,6 +111,10 @@ impl InputMethod {
         let data = self.input_method.data::<InputMethodData>().unwrap();
         let inner = data.inner.lock().unwrap();
         self.input_method.commit(inner.serial.0)
+    }
+
+    pub fn get_popup(&self, popup: &XdgPopup) {
+        self.input_method.get_popup(popup)
     }
 }
 
