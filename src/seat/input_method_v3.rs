@@ -1,3 +1,4 @@
+use crate::compositor::Surface;
 use crate::globals::GlobalData;
 
 use log::warn;
@@ -9,7 +10,6 @@ use wayland_client::globals::{BindError, GlobalList};
 use wayland_client::protocol::wl_seat::WlSeat;
 use wayland_client::WEnum;
 
-use wayland_client::protocol::wl_surface::WlSurface;
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 use wayland_protocols::xdg::shell::client::xdg_popup::XdgPopup;
 use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::{
@@ -22,6 +22,7 @@ pub use zwp_input_method_v3::client::xx_input_method_v1::XxInputMethodV1 as ZwpI
 use zwp_input_method_v3::client::{
     xx_input_method_manager_v2::{self as zwp_input_method_manager_v2, XxInputMethodManagerV2 as ZwpInputMethodManagerV2},
     xx_input_method_v1 as zwp_input_method_v2,
+    xx_input_popup_surface_v2::{self, XxInputPopupSurfaceV2},
 };
 
 #[derive(Debug)]
@@ -115,6 +116,22 @@ impl InputMethod {
 
     pub fn get_popup(&self, popup: &XdgPopup) {
         self.input_method.get_popup(popup)
+    }
+
+    pub fn get_input_popup_surface<D>(
+        &self,
+        qh: &QueueHandle<D>,
+        surface: impl Into<Surface>,
+    ) -> Popup
+        where D: Dispatch<XxInputPopupSurfaceV2, PopupData> + 'static
+    {
+        Popup {
+            popup: self.input_method.get_input_popup_surface(
+                surface.into().wl_surface(),
+                qh,
+                PopupData{ inner: Mutex::new(PopupDataInner{}) },
+            ),
+        }
     }
 }
 
@@ -241,6 +258,38 @@ impl Active {
     }
 }
 
+#[derive(Debug)]
+pub struct Popup {
+    popup: XxInputPopupSurfaceV2,
+}
+
+impl<D> Dispatch<xx_input_popup_surface_v2::XxInputPopupSurfaceV2, PopupData, D>
+    for Popup
+where
+    D: Dispatch<xx_input_popup_surface_v2::XxInputPopupSurfaceV2, PopupData>
+        + InputMethodHandler,
+{
+    fn event(
+        _data: &mut D,
+        _popup: &xx_input_popup_surface_v2::XxInputPopupSurfaceV2,
+        _event: xx_input_popup_surface_v2::Event,
+        _: &PopupData,
+        _conn: &Connection,
+        _qh: &QueueHandle<D>,
+    ) {
+        unreachable!()
+    }
+}
+
+#[derive(Debug)]
+pub struct PopupData {
+    inner: Mutex<PopupDataInner>,
+}
+
+#[derive(Debug)]
+struct PopupDataInner {
+}
+
 #[macro_export]
 macro_rules! delegate_input_method_v3 {
     ($(@<$( $lt:tt $( : $clt:tt $(+ $dlt:tt )* )? ),+>)? $ty: ty) => {
@@ -250,6 +299,9 @@ macro_rules! delegate_input_method_v3 {
         $crate::reexports::client::delegate_dispatch!($(@< $( $lt $( : $clt $(+ $dlt )* )? ),+ >)? $ty: [
             $crate::seat::unstable::zwp_input_method_v3::client::xx_input_method_v1::XxInputMethodV1: $crate::seat::input_method_v3::InputMethodData
         ] => $crate::seat::input_method_v3::InputMethod);
+        $crate::reexports::client::delegate_dispatch!($(@< $( $lt $( : $clt $(+ $dlt )* )? ),+ >)? $ty: [
+            $crate::seat::unstable::zwp_input_method_v3::client::xx_input_popup_surface_v2::XxInputPopupSurfaceV2: $crate::seat::input_method_v3::PopupData
+        ] => $crate::seat::input_method_v3::Popup);
     };
 }
 
@@ -388,6 +440,11 @@ mod test {
 
     fn assert_is_delegate<T>()
         where T: wayland_client::Dispatch<crate::seat::unstable::zwp_input_method_v3::client::xx_input_method_v1::XxInputMethodV1, InputMethodData>,
+    {
+    }
+    
+    fn assert_is_popup_delegate<T>()
+        where T: wayland_client::Dispatch<crate::seat::unstable::zwp_input_method_v3::client::xx_input_popup_surface_v2::XxInputPopupSurfaceV2, PopupData>,
     {
     }
 
