@@ -210,7 +210,7 @@ impl Default for SurfaceDataInner {
 /// An owned [`WlSurface`].
 ///
 /// This destroys the surface on drop.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Surface(wl_surface::WlSurface);
 
 impl Surface {

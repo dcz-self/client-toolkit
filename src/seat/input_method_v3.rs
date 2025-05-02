@@ -16,14 +16,23 @@ use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::{
     ChangeCause, ContentHint, ContentPurpose,
 };
 
-use super::unstable::zwp_input_method_v3;
+use wl_input_method::input_method::xx as zwp_input_method_v3;
 
 pub use zwp_input_method_v3::client::xx_input_method_v1::XxInputMethodV1 as ZwpInputMethodV2;
+pub use zwp_input_method_v3::client::xx_input_popup_surface_v2::XxInputPopupSurfaceV2;
 use zwp_input_method_v3::client::{
     xx_input_method_manager_v2::{self as zwp_input_method_manager_v2, XxInputMethodManagerV2 as ZwpInputMethodManagerV2},
     xx_input_method_v1 as zwp_input_method_v2,
-    xx_input_popup_surface_v2::{self, XxInputPopupSurfaceV2},
+    xx_input_popup_surface_v2,
 };
+
+#[derive(Debug)]
+pub struct Rectangle {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
 
 #[derive(Debug)]
 pub struct InputMethodManager {
@@ -125,12 +134,14 @@ impl InputMethod {
     ) -> Popup
         where D: Dispatch<XxInputPopupSurfaceV2, PopupData> + 'static
     {
+        let surface = surface.into();
         Popup {
             popup: self.input_method.get_input_popup_surface(
-                surface.into().wl_surface(),
+                surface.wl_surface(),
                 qh,
                 PopupData{ inner: Mutex::new(PopupDataInner{}) },
             ),
+            surface,
         }
     }
 }
@@ -258,26 +269,46 @@ impl Active {
     }
 }
 
-#[derive(Debug)]
+
+use wayland_client::protocol::wl_surface;
+
+
+// FIXME: is Clone the right thing here? XdgPopup clones an inner Arc. What happens when cloning XxInputPopupSurfaceV2? Is that equivalent to cloning Arc?
+#[derive(Debug, PartialEq, Eq)]
 pub struct Popup {
     popup: XxInputPopupSurfaceV2,
+    surface: Surface,
 }
 
-impl<D> Dispatch<xx_input_popup_surface_v2::XxInputPopupSurfaceV2, PopupData, D>
+impl Popup {
+    pub fn wl_surface(&self) -> &wl_surface::WlSurface {
+        &self.surface.wl_surface()
+    }
+}
+
+impl<D> Dispatch<XxInputPopupSurfaceV2, PopupData, D>
     for Popup
 where
-    D: Dispatch<xx_input_popup_surface_v2::XxInputPopupSurfaceV2, PopupData>
+    D: Dispatch<XxInputPopupSurfaceV2, PopupData>
         + InputMethodHandler,
 {
     fn event(
-        _data: &mut D,
-        _popup: &xx_input_popup_surface_v2::XxInputPopupSurfaceV2,
-        _event: xx_input_popup_surface_v2::Event,
+        data: &mut D,
+        popup: &XxInputPopupSurfaceV2,
+        event: xx_input_popup_surface_v2::Event,
         _: &PopupData,
         _conn: &Connection,
-        _qh: &QueueHandle<D>,
+        qh: &QueueHandle<D>,
     ) {
-        unreachable!()
+        use xx_input_popup_surface_v2::Event;
+
+        match event {
+            Event::TextInputRectangle{x, y, width, height} => {
+                // TODO: this should be sent to the client after InputMethod.commit()
+                data.handle_text_input_rectangle(qh, &popup, Rectangle {x, y, width, height})
+            },
+            _ => unreachable!(),
+        };
     }
 }
 
@@ -288,19 +319,20 @@ pub struct PopupData {
 
 #[derive(Debug)]
 struct PopupDataInner {
+    //rectangle: Rectangle,
 }
 
 #[macro_export]
 macro_rules! delegate_input_method_v3 {
     ($(@<$( $lt:tt $( : $clt:tt $(+ $dlt:tt )* )? ),+>)? $ty: ty) => {
         $crate::reexports::client::delegate_dispatch!($(@< $( $lt $( : $clt $(+ $dlt )* )? ),+ >)? $ty: [
-            $crate::seat::unstable::zwp_input_method_v3::client::xx_input_method_manager_v2::XxInputMethodManagerV2: $crate::globals::GlobalData
+            $crate::reexports::wl_input_method::input_method::xx::client::xx_input_method_manager_v2::XxInputMethodManagerV2: $crate::globals::GlobalData
         ] => $crate::seat::input_method_v3::InputMethodManager);
         $crate::reexports::client::delegate_dispatch!($(@< $( $lt $( : $clt $(+ $dlt )* )? ),+ >)? $ty: [
-            $crate::seat::unstable::zwp_input_method_v3::client::xx_input_method_v1::XxInputMethodV1: $crate::seat::input_method_v3::InputMethodData
+            $crate::reexports::wl_input_method::input_method::xx::client::xx_input_method_v1::XxInputMethodV1: $crate::seat::input_method_v3::InputMethodData
         ] => $crate::seat::input_method_v3::InputMethod);
         $crate::reexports::client::delegate_dispatch!($(@< $( $lt $( : $clt $(+ $dlt )* )? ),+ >)? $ty: [
-            $crate::seat::unstable::zwp_input_method_v3::client::xx_input_popup_surface_v2::XxInputPopupSurfaceV2: $crate::seat::input_method_v3::PopupData
+            $crate::reexports::wl_input_method::input_method::xx::client::xx_input_popup_surface_v2::XxInputPopupSurfaceV2: $crate::seat::input_method_v3::PopupData
         ] => $crate::seat::input_method_v3::Popup);
     };
 }
@@ -323,6 +355,13 @@ pub trait InputMethodHandler: Sized {
         state: &InputMethodEventState,
     );
     fn handle_unavailable(&self, qh: &QueueHandle<Self>, input_method: &ZwpInputMethodV2);
+    /// Remember this doesn't take effect until handle_done.
+    fn handle_text_input_rectangle(
+        &self,
+        qh: &QueueHandle<Self>,
+        popup: &XxInputPopupSurfaceV2,
+        text_input_rectangle: Rectangle,
+    );
 }
 
 impl<D, U> Dispatch<ZwpInputMethodV2, U, D> for InputMethod
