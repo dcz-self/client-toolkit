@@ -62,3 +62,12 @@ pollster = "0.3.0"
 [[example]]
 name = "wgpu"
 required-features = ["wayland-backend/client_system"]
+
+[patch.crates-io]
+wayland-backend = { path = "../wayland-rs/wayland-backend", version = "0.3.0" }
+wayland-client = { path = "../wayland-rs/wayland-client", version = "0.31.1" }
+wayland-cursor = { path = "../wayland-rs/wayland-cursor", version = "0.31.0" }
+wayland-protocols = { path = "../wayland-rs/wayland-protocols", version = "0.32.1", features = ["client", "staging", "unstable"] }
+wayland-protocols-misc = { path = "../wayland-rs/wayland-protocols-misc", version = "0.3.6", features = ["client"] }
+wayland-protocols-wlr = { path = "../wayland-rs/wayland-protocols-wlr", version = "0.3.1", features = ["client"] }
+wayland-scanner = { path = "../wayland-rs/wayland-scanner", version = "0.31.0" }
