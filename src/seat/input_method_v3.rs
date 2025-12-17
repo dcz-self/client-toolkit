@@ -12,7 +12,8 @@
 use crate::compositor::Surface;
 use crate::globals::GlobalData;
 
-use log::{debug, warn};
+use log::{debug, error, warn};
+use wayland_protocols_experimental::input_method::v1::client::xx_input_method_v1::ProtocolCompat;
 
 use std::collections::{HashMap, HashSet};
 use std::num::Wrapping;
@@ -357,7 +358,9 @@ pub struct SurroundingText {
     pub anchor: u32,
 }
 
-/// Describes operations that can be performed on this input method.
+/// Specifies the protocol used by the text input, alongside  operations that can be performed on it.
+/// 
+/// Always check `compat_level`!
 #[non_exhaustive]
 // non exhaustive so that bumping protocol version and adding new ones
 // doesn't automatically break compat
@@ -367,6 +370,10 @@ pub struct Capabilities {
     pub content_type: bool,
     pub actions: HashSet<Action>,
     pub supported_features: SupportedFeatures,
+    /// The version of the text input protocol the input field expects.
+    ///
+    /// This defines the semantics of some operations and values, e.g. serial.
+    pub compat_level: ProtocolCompat,
 }
 
 impl Default for Capabilities {
@@ -376,6 +383,7 @@ impl Default for Capabilities {
             content_type: false,
             actions: Default::default(),
             supported_features: SupportedFeatures::empty(),
+            compat_level: ProtocolCompat::TextInputV3,
         }
     }
 }
@@ -437,6 +445,21 @@ impl Active {
                 Self::NegotiatingCapabilities(Capabilities { supported_features, ..capabilities })
             }
             active @ Self::Active { .. } => active,
+        }
+    }
+    
+    fn with_compat_level(self, compat_level: ProtocolCompat) -> Self {
+        match self {
+            Self::Inactive => Self::Inactive,
+            Self::NegotiatingCapabilities(capabilities) => {
+                Self::NegotiatingCapabilities(Capabilities { compat_level, ..capabilities })
+            }
+            active @ Self::Active { .. } => {
+                error!("Compositor tried to set protocol compatibility level while input method is already enabled.
+This is a bug in the compositor. Set compat while enabling!
+Ignoring compat level.");
+                active
+            }
         }
     }
 
@@ -727,6 +750,20 @@ where
                             WEnum::Unknown(value) => {
                                 warn!("Unknown `features`: {value}. Assuming no extra features supported.");
                                 SupportedFeatures::empty()
+                            }
+                        }
+                    ),
+                    ..imdata.pending_state.clone()
+                }
+            }
+            Event::AnnounceProtocolCompat { compat_level } => {
+                imdata.pending_state = InputMethodEventState {
+                    active: imdata.pending_state.active.clone().with_compat_level(
+                        match compat_level {
+                            WEnum::Value(v) => v,
+                            WEnum::Unknown(value) => {
+                                error!("Unknown `compat_level`: {value}. Falling back to default. Expect malfunction.");
+                                ProtocolCompat::empty()
                             }
                         }
                     ),
