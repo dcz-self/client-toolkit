@@ -67,7 +67,7 @@ impl InputMethodManager {
     where
         D: Dispatch<XxInputMethodManagerV2, GlobalData> + 'static,
     {
-        let manager = globals.bind(qh, 2..=3, GlobalData)?;
+        let manager = globals.bind(qh, 2..=4, GlobalData)?;
         Ok(Self { manager })
     }
 
