@@ -763,7 +763,7 @@ where
                             WEnum::Value(v) => v,
                             WEnum::Unknown(value) => {
                                 error!("Unknown `compat_level`: {value}. Falling back to default. Expect malfunction.");
-                                ProtocolCompat::empty()
+                                ProtocolCompat::TextInputV3
                             }
                         }
                     ),
