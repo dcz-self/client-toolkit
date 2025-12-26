@@ -786,8 +786,13 @@ where
                     }
                     *state = state.clone().reset_on_done();
                 }
+                let bump_serial = match (&imdata.current_state.active, &imdata.pending_state.active) {
+                    (Active::Active(..), Active::Active(..)) => false,
+                    (_, Active::Active(..)) => true,
+                    _ => false,
+                };
                 imdata.current_state = imdata.pending_state.clone();
-                imdata.serial += 1;
+                imdata.serial += bump_serial as u32;
                 data.handle_done(qh, input_method, &imdata.current_state)
             }
             Event::Unavailable => data.handle_unavailable(qh, input_method),
