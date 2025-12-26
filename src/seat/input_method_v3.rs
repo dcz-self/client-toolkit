@@ -230,7 +230,21 @@ impl InputMethod {
     pub fn commit(&self) {
         let data = self.input_method.data::<InputMethodData>().unwrap();
         let inner = &data.inner.lock().unwrap();
-        self.input_method.commit(inner.serial.0)
+        let serial = match inner.current_state.active {
+            Active::Active(Capabilities {
+                compat_level: ProtocolCompat::XxTextInput,
+                ..
+            }) => inner.activation_count.0,
+            Active::Active(Capabilities {
+                compat_level: ProtocolCompat::TextInputV3,
+                ..
+            }) => inner.serial.0,
+            _ => {
+                warn!("trying to commit on an inactive input method");
+                0
+            },
+        };
+        self.input_method.commit(serial)
     }
 
     pub fn get_input_popup_surface<D>(
@@ -273,6 +287,7 @@ impl InputMethodData {
                 pending_state: Default::default(),
                 current_state: Default::default(),
                 serial: Wrapping(0),
+                activation_count: Wrapping(0),
             })),
         }
     }
@@ -287,7 +302,10 @@ impl InputMethodData {
 struct InputMethodDataInner {
     pending_state: InputMethodEventState,
     current_state: InputMethodEventState,
+    /// Serial for text-input-v3 semantics
     serial: Wrapping<u32>,
+    /// Number of activations for text-input-experimental semantics
+    activation_count: Wrapping<u32>,
 }
 
 /// Stores incoming interface state.
@@ -786,13 +804,14 @@ where
                     }
                     *state = state.clone().reset_on_done();
                 }
-                let bump_serial = match (&imdata.current_state.active, &imdata.pending_state.active) {
+                let turned_active = match (&imdata.current_state.active, &imdata.pending_state.active) {
                     (Active::Active(..), Active::Active(..)) => false,
                     (_, Active::Active(..)) => true,
                     _ => false,
                 };
                 imdata.current_state = imdata.pending_state.clone();
-                imdata.serial += bump_serial as u32;
+                imdata.serial += 1;
+                imdata.activation_count += turned_active as u32;
                 data.handle_done(qh, input_method, &imdata.current_state)
             }
             Event::Unavailable => data.handle_unavailable(qh, input_method),
